@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { format, isToday, isYesterday } from "date-fns";
-import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar, Trash2, Pin, Crown, ShieldCheck, Lock, Unlock } from "lucide-react";
+import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar, Trash2, Pin, Crown, ShieldCheck, Lock, Unlock, Heart } from "lucide-react";
 
 const GENRES = ["全部", "流行", "摇滚", "电子", "说唱", "民谣", "爵士/布鲁斯", "古典", "ACG", "其他"];
 const LANGUAGES = ["全部", "华语", "欧美", "日语", "韩语", "粤语", "纯音乐", "其他"];
@@ -32,6 +32,10 @@ export default function Home() {
   const [isFormCreator, setIsFormCreator] = useState(false);
   const [isFormPinned, setIsFormPinned] = useState(false);
 
+  // Favorites State
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
   const { data, mutate } = useSWR(`/api/songs?genre=${activeGenre}&language=${activeLanguage}`, fetcher, {
     revalidateOnFocus: true,
     revalidateOnMount: true
@@ -57,6 +61,29 @@ export default function Home() {
       window.history.replaceState({}, document.title, cleanUrl);
     }
   }, []);
+
+  // Load favorites from localStorage
+  useEffect(() => {
+    const storedFavorites = localStorage.getItem("dredge_favorites");
+    if (storedFavorites) {
+      try {
+        setFavorites(JSON.parse(storedFavorites));
+      } catch (e) {
+        console.error("Error loading favorites:", e);
+      }
+    }
+  }, []);
+
+  const handleToggleFavorite = (id: string) => {
+    let updatedFavorites;
+    if (favorites.includes(id)) {
+      updatedFavorites = favorites.filter(favId => favId !== id);
+    } else {
+      updatedFavorites = [...favorites, id];
+    }
+    setFavorites(updatedFavorites);
+    localStorage.setItem("dredge_favorites", JSON.stringify(updatedFavorites));
+  };
 
   const handleAdminLogin = () => {
     const password = prompt("请输入主理人密码:");
@@ -330,6 +357,22 @@ export default function Home() {
 
         {/* Feed Section */}
         <section>
+          {/* Section Header with Favorites Toggle */}
+          <div className="flex justify-between items-center pb-4 mb-4 border-b border-neutral-200/60">
+            <h2 className="text-xl font-bold text-neutral-800">发现好歌</h2>
+            <button 
+              onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
+                showFavoritesOnly 
+                  ? "bg-red-500 text-white shadow-md shadow-red-100" 
+                  : "bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50"
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${showFavoritesOnly ? "fill-white text-white" : "text-red-500"}`} />
+              我的收藏 ({favorites.length})
+            </button>
+          </div>
+
           {/* Filters Tabs */}
           <div className="space-y-3 pb-4">
             <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide">
@@ -374,18 +417,38 @@ export default function Home() {
           {/* Cards */}
           <div className="mt-2">
             {!data && <div className="text-center text-neutral-400 py-10">加载中...</div>}
-            {data?.data?.length === 0 && (
-              <div className="text-center text-neutral-400 py-10 bg-white rounded-2xl border border-neutral-100">
-                <Music className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                <p>暂无符合条件的歌曲，快来投递第一首吧！</p>
+            {data && (showFavoritesOnly ? favorites.length === 0 : data.data.length === 0) && (
+              <div className="text-center text-neutral-400 py-12 bg-white rounded-2xl border border-neutral-100 shadow-sm">
+                {showFavoritesOnly ? (
+                  <div className="max-w-md mx-auto px-4">
+                    <Heart className="w-10 h-10 mx-auto mb-3 text-red-400 opacity-40 animate-pulse" />
+                    <p className="font-semibold text-neutral-700">你的收藏夹空空如也</p>
+                    <p className="text-xs text-neutral-400 mt-2 leading-relaxed">
+                      点按好歌下方的“❤️ 收藏”按钮，它们就会被收录在这里啦。
+                      所有收藏都安全的保存在你自己的浏览器里。
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <Music className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                    <p>暂无符合条件的歌曲，快来投递第一首吧！</p>
+                  </>
+                )}
               </div>
             )}
             
             {(() => {
               if (!data?.data || data.data.length === 0) return null;
               
-              // Group songs by date (Pinned songs will remain at the top but grouped nicely, wait - since they are sorted first, they will appear in their own groups or at the top of everything. In SQL order, pinned are first, so they will automatically form groups or a "置顶" section if we want, or just grouped by their actual created date but ordered first. Let's group them by date but let pinned songs appear beautifully within their days with special indicators!)
-              const groupedSongs = data.data.reduce((acc: any, song: any) => {
+              // Filter songs if showFavoritesOnly is active
+              const displaySongs = showFavoritesOnly 
+                ? data.data.filter((song: any) => favorites.includes(song.id))
+                : data.data;
+
+              if (displaySongs.length === 0) return null;
+              
+              // Group songs by date
+              const groupedSongs = displaySongs.reduce((acc: any, song: any) => {
                 const dateStr = format(new Date(song.createdAt), "yyyy-MM-dd");
                 if (!acc[dateStr]) acc[dateStr] = [];
                 acc[dateStr].push(song);
@@ -489,6 +552,25 @@ export default function Home() {
                                     <a 
                                       href={appleLink}
                                       target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 text-neutral-700 hover:bg-neutral-200 rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                      <Apple className="w-4 h-4" />
+                                      在 Apple Music 播放
+                                    </a>
+                                    {/* 收藏按钮 */}
+                                    <button 
+                                      onClick={() => handleToggleFavorite(song.id)}
+                                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                        favorites.includes(song.id)
+                                          ? "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                                          : "bg-neutral-50 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                                      }`}
+                                    >
+                                      <Heart className={`w-3.5 h-3.5 ${favorites.includes(song.id) ? "fill-rose-500 text-rose-500" : ""}`} />
+                                      {favorites.includes(song.id) ? "已收藏" : "收藏"}
+                                    </button>
+                                  </div>
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 text-neutral-700 hover:bg-neutral-200 rounded-lg text-sm font-medium transition-colors"
                                     >
