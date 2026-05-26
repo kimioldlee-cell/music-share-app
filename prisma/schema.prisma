@@ -21,6 +21,8 @@ model Song {
   genre     String   @default("其他") // 分类: 流行、摇滚、电子、说唱、民谣、纯音乐、其他
   language  String   @default("其他") // 语种: 华语、欧美、日语、韩语、粤语、其他
   comment   String?
+  isPinned  Boolean  @default(false)  // 是否置顶
+  isCreator Boolean  @default(false)  // 是否为主理人推荐
   createdAt DateTime @default(now())
 }
 

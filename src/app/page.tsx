@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { format, isToday, isYesterday } from "date-fns";
-import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar } from "lucide-react";
+import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar, Trash2, Pin, Crown, ShieldCheck, Lock, Unlock } from "lucide-react";
 
 const GENRES = ["全部", "流行", "摇滚", "电子", "说唱", "民谣", "爵士/布鲁斯", "古典", "ACG", "其他"];
 const LANGUAGES = ["全部", "华语", "欧美", "日语", "韩语", "粤语", "纯音乐", "其他"];
@@ -26,10 +26,58 @@ export default function Home() {
   const [comment, setComment] = useState("");
   const [platform, setPlatform] = useState("unknown");
 
+  // Creator Mode State
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminPasscode, setAdminPasscode] = useState("");
+  const [isFormCreator, setIsFormCreator] = useState(false);
+  const [isFormPinned, setIsFormPinned] = useState(false);
+
   const { data, mutate } = useSWR(`/api/songs?genre=${activeGenre}&language=${activeLanguage}`, fetcher, {
     revalidateOnFocus: true,
     revalidateOnMount: true
   });
+
+  // Handle auto login from query param or localStorage
+  useEffect(() => {
+    const storedPasscode = localStorage.getItem("admin_passcode");
+    if (storedPasscode) {
+      setIsAdmin(true);
+      setAdminPasscode(storedPasscode);
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get("key");
+    if (key === "Kimi84282106") {
+      localStorage.setItem("admin_passcode", key);
+      setIsAdmin(true);
+      setAdminPasscode(key);
+      alert("🎉 欢迎回来，主理人！管理模式已启用。");
+      // Clean up the URL parameter to protect the passcode
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, []);
+
+  const handleAdminLogin = () => {
+    const password = prompt("请输入主理人密码:");
+    if (password === "Kimi84282106") {
+      localStorage.setItem("admin_passcode", password);
+      setIsAdmin(true);
+      setAdminPasscode(password);
+      alert("🎉 欢迎回来，主理人！管理模式已启用。");
+    } else if (password) {
+      alert("❌ 密码错误");
+    }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem("admin_passcode");
+    setIsAdmin(false);
+    setAdminPasscode("");
+    setIsFormCreator(false);
+    setIsFormPinned(false);
+    alert("已退出主理人管理模式");
+  };
 
   const handleParse = async (inputUrl: string) => {
     if (!inputUrl) return;
@@ -59,10 +107,26 @@ export default function Home() {
     if (!url || !title) return;
     setSubmitting(true);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (isAdmin && adminPasscode) {
+        headers["Authorization"] = `Bearer ${adminPasscode}`;
+      }
+
       await fetch("/api/songs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, title, artist, cover, genre, language, comment, platform }),
+        headers,
+        body: JSON.stringify({ 
+          url, 
+          title, 
+          artist, 
+          cover, 
+          genre, 
+          language, 
+          comment, 
+          platform,
+          isCreator: isAdmin ? isFormCreator : false,
+          isPinned: isAdmin ? isFormPinned : false
+        }),
       });
       // Reset form
       setUrl("");
@@ -70,6 +134,8 @@ export default function Home() {
       setArtist("");
       setCover("");
       setComment("");
+      setIsFormCreator(false);
+      setIsFormPinned(false);
       // Force mutate all SWR caches for this API
       mutate();
       // Optional: Give it a slight delay and mutate again to be absolutely sure
@@ -81,19 +147,101 @@ export default function Home() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("确定要删除这首歌曲吗？")) return;
+    try {
+      const res = await fetch(`/api/songs?id=${id}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${adminPasscode}`
+        }
+      });
+      if (res.ok) {
+        mutate();
+      } else {
+        alert("删除失败");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTogglePin = async (id: string, currentPin: boolean) => {
+    try {
+      const res = await fetch(`/api/songs`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminPasscode}`
+        },
+        body: JSON.stringify({ id, isPinned: !currentPin })
+      });
+      if (res.ok) {
+        mutate();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleToggleCreator = async (id: string, currentCreator: boolean) => {
+    try {
+      const res = await fetch(`/api/songs`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminPasscode}`
+        },
+        body: JSON.stringify({ id, isCreator: !currentCreator })
+      });
+      if (res.ok) {
+        mutate();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900 font-sans pb-20">
       <header className="bg-white sticky top-0 z-10 border-b border-neutral-200 px-6 py-4 shadow-sm">
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <Disc3 className="w-6 h-6 text-indigo-600" />
-          <h1 className="text-xl font-bold tracking-tight">打捞 (Dredge)</h1>
-          <span className="text-sm text-neutral-500 ml-2">每日好歌共享池</span>
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Disc3 className="w-6 h-6 text-indigo-600 animate-spin" style={{ animationDuration: '6s' }} />
+            <h1 className="text-xl font-bold tracking-tight">打捞 (Dredge)</h1>
+            <span className="text-sm text-neutral-500 ml-2 hidden sm:inline">每日好歌共享池</span>
+          </div>
+          {isAdmin ? (
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold animate-pulse">
+                <Crown className="w-3.5 h-3.5" />
+                主理人模式已启用
+              </span>
+              <button 
+                onClick={handleAdminLogout}
+                className="text-xs px-2 py-1 text-neutral-400 hover:text-neutral-600 transition"
+              >
+                退出
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={handleAdminLogin}
+              className="text-xs text-neutral-300 hover:text-neutral-400 flex items-center gap-1 transition"
+              title="主理人后台"
+            >
+              <Lock className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-4 mt-8 space-y-12">
         {/* Submit Section */}
-        <section className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-100">
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-100 relative overflow-hidden">
+          {isAdmin && (
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500" />
+          )}
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Send className="w-5 h-5 text-indigo-500" />
             投递一首好歌
@@ -143,12 +291,38 @@ export default function Home() {
                   <label className="block text-sm font-medium text-neutral-600 mb-1">推荐语 (可选)</label>
                   <input type="text" value={comment} onChange={e => setComment(e.target.value)} placeholder="前奏一响，直接沦陷..." className="w-full px-4 py-2 border border-neutral-200 rounded-lg outline-none" />
                 </div>
+
+                {/* Creator Privileges Form Checkboxes */}
+                {isAdmin && (
+                  <div className="md:col-span-2 flex items-center gap-6 bg-amber-50/50 p-3 rounded-xl border border-amber-100">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-amber-800 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={isFormCreator} 
+                        onChange={e => setIsFormCreator(e.target.checked)} 
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer" 
+                      />
+                      👑 标记为主理人推荐
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-amber-800 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={isFormPinned} 
+                        onChange={e => setIsFormPinned(e.target.checked)} 
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer" 
+                      />
+                      📌 置顶这首歌
+                    </label>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="flex justify-end">
-              <button disabled={!title || submitting} type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "分享到池子"}
+              <button disabled={!title || submitting} type="submit" className={`px-6 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-white ${
+                isAdmin ? "bg-amber-600 hover:bg-amber-700 shadow-md" : "bg-indigo-600 hover:bg-indigo-700"
+              }`}>
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : isAdmin ? "作为主理人发布" : "分享到池子"}
               </button>
             </div>
           </form>
@@ -210,7 +384,7 @@ export default function Home() {
             {(() => {
               if (!data?.data || data.data.length === 0) return null;
               
-              // Group songs by date
+              // Group songs by date (Pinned songs will remain at the top but grouped nicely, wait - since they are sorted first, they will appear in their own groups or at the top of everything. In SQL order, pinned are first, so they will automatically form groups or a "置顶" section if we want, or just grouped by their actual created date but ordered first. Let's group them by date but let pinned songs appear beautifully within their days with special indicators!)
               const groupedSongs = data.data.reduce((acc: any, song: any) => {
                 const dateStr = format(new Date(song.createdAt), "yyyy-MM-dd");
                 if (!acc[dateStr]) acc[dateStr] = [];
@@ -240,7 +414,11 @@ export default function Home() {
                         return (
                           <div
                             key={song.id}
-                            className="group block bg-white rounded-2xl p-4 shadow-sm border border-neutral-100 hover:shadow-md transition-all"
+                            className={`group block bg-white rounded-2xl p-4 shadow-sm border transition-all ${
+                              song.isPinned 
+                                ? "border-amber-300 ring-1 ring-amber-300/50 hover:shadow-amber-100/50" 
+                                : "border-neutral-100 hover:shadow-md"
+                            }`}
                           >
                             <div className="flex gap-4 items-start">
                               <div className="relative shrink-0">
@@ -249,12 +427,25 @@ export default function Home() {
                                   alt={song.title} 
                                   className="w-24 h-24 rounded-xl object-cover"
                                 />
+                                {song.isPinned && (
+                                  <div className="absolute -top-1.5 -left-1.5 bg-amber-500 text-white p-1 rounded-full shadow" title="置顶歌曲">
+                                    <Pin className="w-3.5 h-3.5 fill-white" />
+                                  </div>
+                                )}
                               </div>
                               
                               <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-start gap-2">
-                                  <div>
-                                    <h3 className="font-semibold text-lg text-neutral-900 truncate">{song.title}</h3>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <h3 className="font-semibold text-lg text-neutral-900 truncate">{song.title}</h3>
+                                      {song.isCreator && (
+                                        <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded font-medium shrink-0">
+                                          <Crown className="w-3 h-3" />
+                                          主理人推荐
+                                        </span>
+                                      )}
+                                    </div>
                                     <p className="text-sm text-neutral-500 truncate">{song.artist}</p>
                                   </div>
                                   {song.platform === "netease" ? (
@@ -265,7 +456,11 @@ export default function Home() {
                                 </div>
 
                                 {song.comment && (
-                                  <p className="mt-3 text-sm text-neutral-700 bg-neutral-50 p-2.5 rounded-lg border border-neutral-100 line-clamp-2">
+                                  <p className={`mt-3 text-sm p-2.5 rounded-lg border line-clamp-2 ${
+                                    song.isCreator 
+                                      ? "text-amber-900 bg-amber-50/50 border-amber-100" 
+                                      : "text-neutral-700 bg-neutral-50 border-neutral-100"
+                                  }`}>
                                     “{song.comment}”
                                   </p>
                                 )}
@@ -278,26 +473,60 @@ export default function Home() {
                                   <span className="ml-1">{format(new Date(song.createdAt), "HH:mm")}</span>
                                 </div>
                                 
-                                {/* 多平台跳转按钮 */}
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                  <a 
-                                    href={neteaseLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors"
-                                  >
-                                    <Disc3 className="w-4 h-4" />
-                                    在网易云播放
-                                  </a>
-                                  <a 
-                                    href={appleLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 text-neutral-700 hover:bg-neutral-200 rounded-lg text-sm font-medium transition-colors"
-                                  >
-                                    <Apple className="w-4 h-4" />
-                                    在 Apple Music 播放
-                                  </a>
+                                {/* Action Buttons */}
+                                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-neutral-100 pt-3">
+                                  {/* Multi-platform jump buttons */}
+                                  <div className="flex flex-wrap gap-2">
+                                    <a 
+                                      href={neteaseLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                      <Disc3 className="w-4 h-4 animate-spin-slow" />
+                                      在网易云播放
+                                    </a>
+                                    <a 
+                                      href={appleLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 text-neutral-700 hover:bg-neutral-200 rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                      <Apple className="w-4 h-4" />
+                                      在 Apple Music 播放
+                                    </a>
+                                  </div>
+
+                                  {/* Creator Management Actions */}
+                                  {isAdmin && (
+                                    <div className="flex items-center gap-1.5 bg-amber-50/50 p-1 rounded-lg border border-amber-200">
+                                      <button
+                                        onClick={() => handleTogglePin(song.id, song.isPinned)}
+                                        className={`p-1.5 rounded transition ${
+                                          song.isPinned ? "bg-amber-500 text-white" : "text-amber-700 hover:bg-amber-100"
+                                        }`}
+                                        title={song.isPinned ? "取消置顶" : "置顶歌曲"}
+                                      >
+                                        <Pin className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleToggleCreator(song.id, song.isCreator)}
+                                        className={`p-1.5 rounded transition ${
+                                          song.isCreator ? "bg-amber-500 text-white" : "text-amber-700 hover:bg-amber-100"
+                                        }`}
+                                        title={song.isCreator ? "取消主理人标记" : "标记为主理人推荐"}
+                                      >
+                                        <Crown className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDelete(song.id)}
+                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
+                                        title="删除歌曲"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -312,6 +541,30 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      {/* Subtle Footer for Passcode login */}
+      <footer className="mt-20 border-t border-neutral-200/50 py-8 text-center text-xs text-neutral-400">
+        <div className="max-w-3xl mx-auto flex flex-col items-center gap-2">
+          <p>© 2026 打捞 (Dredge) · 倾听世界的温差</p>
+          {!isAdmin ? (
+            <button 
+              onClick={handleAdminLogin}
+              className="mt-1 flex items-center gap-1 text-neutral-300 hover:text-indigo-400 transition"
+            >
+              <Lock className="w-3 h-3" />
+              主理人通道
+            </button>
+          ) : (
+            <button 
+              onClick={handleAdminLogout}
+              className="mt-1 flex items-center gap-1 text-amber-500 hover:text-amber-600 transition font-semibold"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              主理人模式已启用 (点击退出)
+            </button>
+          )}
+        </div>
+      </footer>
     </main>
   );
 }
