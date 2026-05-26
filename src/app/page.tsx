@@ -139,7 +139,7 @@ export default function Home() {
         headers["Authorization"] = `Bearer ${adminPasscode}`;
       }
 
-      await fetch("/api/songs", {
+      const res = await fetch("/api/songs", {
         method: "POST",
         headers,
         body: JSON.stringify({ 
@@ -155,7 +155,15 @@ export default function Home() {
           isPinned: isAdmin ? isFormPinned : false
         }),
       });
-      // Reset form
+      
+      const result = await res.json();
+      
+      if (!res.ok || !result.success) {
+        alert(`❌ 发布失败: ${result.error || "未知错误"}\n提示: 请检查是否在 Vercel 关联了 ADMIN_PASSWORD 环境变量并进行了 Redeploy。`);
+        return;
+      }
+
+      // Reset form on success
       setUrl("");
       setTitle("");
       setArtist("");
@@ -169,6 +177,7 @@ export default function Home() {
       setTimeout(() => mutate(), 500);
     } catch (e) {
       console.error(e);
+      alert("❌ 网络请求错误，请稍后再试");
     } finally {
       setSubmitting(false);
     }
