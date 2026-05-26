@@ -580,13 +580,6 @@ export default function Home() {
                                       {favorites.includes(song.id) ? "已收藏" : "收藏"}
                                     </button>
                                   </div>
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 text-neutral-700 hover:bg-neutral-200 rounded-lg text-sm font-medium transition-colors"
-                                    >
-                                      <Apple className="w-4 h-4" />
-                                      在 Apple Music 播放
-                                    </a>
-                                  </div>
 
                                   {/* Creator Management Actions */}
                                   {isAdmin && (
