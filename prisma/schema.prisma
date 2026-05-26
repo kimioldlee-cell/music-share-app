@@ -1,0 +1,26 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Song {
+  id        String   @id @default(cuid())
+  url       String
+  platform  String   // "netease" or "apple"
+  title     String
+  artist    String
+  cover     String
+  genre     String   @default("其他") // 分类: 流行、摇滚、电子、说唱、民谣、纯音乐、其他
+  language  String   @default("其他") // 语种: 华语、欧美、日语、韩语、粤语、其他
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
