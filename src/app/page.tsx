@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { format, isToday, isYesterday } from "date-fns";
-import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar, Trash2, Pin, Crown, ShieldCheck, Lock, Unlock, Heart } from "lucide-react";
+import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar, Trash2, Pin, Crown, ShieldCheck, Lock, Unlock, Heart, User, LogOut, X, Mail, Key, Smile } from "lucide-react";
 
 const GENRES = ["全部", "流行", "摇滚", "电子", "说唱", "民谣", "爵士/布鲁斯", "古典", "ACG", "其他"];
 const LANGUAGES = ["全部", "华语", "欧美", "日语", "韩语", "粤语", "纯音乐", "其他"];
@@ -32,6 +32,15 @@ export default function Home() {
   const [isFormCreator, setIsFormCreator] = useState(false);
   const [isFormPinned, setIsFormPinned] = useState(false);
 
+  // User Authentication State
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+
   // Favorites State
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -40,6 +49,11 @@ export default function Home() {
     revalidateOnFocus: true,
     revalidateOnMount: true
   });
+
+  // Fetch user profile from SWR
+  const { data: authData, mutate: mutateUser } = useSWR("/api/auth/me", fetcher);
+  const currentUser = authData?.user;
+  const isAuthenticated = authData?.authenticated;
 
   // Handle auto login from query param or localStorage
   useEffect(() => {
@@ -62,7 +76,7 @@ export default function Home() {
     }
   }, []);
 
-  // Load favorites from localStorage
+  // Load favorites from localStorage on start
   useEffect(() => {
     const storedFavorites = localStorage.getItem("dredge_favorites");
     if (storedFavorites) {
@@ -74,15 +88,121 @@ export default function Home() {
     }
   }, []);
 
-  const handleToggleFavorite = (id: string) => {
+  // Sync and merge favorites when authenticated
+  useEffect(() => {
+    if (isAuthenticated && authData?.favorites) {
+      const localFavs = localStorage.getItem("dredge_favorites");
+      const localArr: string[] = localFavs ? JSON.parse(localFavs) : [];
+      
+      // Merge local and remote
+      const merged = Array.from(new Set([...localArr, ...authData.favorites]));
+      setFavorites(merged);
+      localStorage.setItem("dredge_favorites", JSON.stringify(merged));
+      
+      // If there are newly added local favorites while offline, sync them to backend!
+      const unsyncedFavs = localArr.filter(id => !authData.favorites.includes(id));
+      if (unsyncedFavs.length > 0) {
+        Promise.all(
+          unsyncedFavs.map(songId => 
+            fetch("/api/favorites", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ songId })
+            }).catch(e => console.error(e))
+          )
+        ).then(() => {
+          mutateUser();
+        });
+      }
+    }
+  }, [isAuthenticated, authData?.favorites, mutateUser]);
+
+  const handleToggleFavorite = async (id: string) => {
+    // 1. Optimistic update (instantly update local UI)
     let updatedFavorites;
-    if (favorites.includes(id)) {
+    const isCurrentlyFav = favorites.includes(id);
+    if (isCurrentlyFav) {
       updatedFavorites = favorites.filter(favId => favId !== id);
     } else {
       updatedFavorites = [...favorites, id];
     }
     setFavorites(updatedFavorites);
     localStorage.setItem("dredge_favorites", JSON.stringify(updatedFavorites));
+
+    // 2. If logged in, sync to backend database
+    if (isAuthenticated) {
+      try {
+        const res = await fetch("/api/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ songId: id })
+        });
+        const result = await res.json();
+        if (result.success && result.favorites) {
+          setFavorites(result.favorites);
+          localStorage.setItem("dredge_favorites", JSON.stringify(result.favorites));
+          mutateUser();
+        }
+      } catch (e) {
+        console.error("Failed to sync favorite with server:", e);
+      }
+    }
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSubmitting(true);
+
+    const isLogin = authTab === "login";
+    const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+    const payload = isLogin 
+      ? { email: authEmail, password: authPassword }
+      : { email: authEmail, password: authPassword, name: authName };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        setAuthError(result.error || "操作失败，请重试");
+        return;
+      }
+
+      // Close modal & reset fields
+      setShowAuthModal(false);
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthName("");
+      // Update user state
+      mutateUser();
+      alert(isLogin ? `👋 欢迎回来，${result.data.name}！` : `🎉 注册成功！已为您自动登录，欢迎来到打捞。`);
+    } catch (e) {
+      console.error(e);
+      setAuthError("网络请求错误，请稍后再试");
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!confirm("确定要退出登录吗？")) return;
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (res.ok) {
+        mutateUser();
+        // Clear local cache if they want, but keeping favorites locally is nice and graceful.
+        // Actually, just let mutateUser clear the authenticated state is perfect!
+        alert("已成功退出登录");
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleAdminLogin = () => {
@@ -240,35 +360,69 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900 font-sans pb-20">
-      <header className="bg-white sticky top-0 z-10 border-b border-neutral-200 px-6 py-4 shadow-sm">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Disc3 className="w-6 h-6 text-indigo-600 animate-spin" style={{ animationDuration: '6s' }} />
-            <h1 className="text-xl font-bold tracking-tight">打捞 (Dredge)</h1>
-            <span className="text-sm text-neutral-500 ml-2 hidden sm:inline">每日好歌共享池</span>
+      <header className="bg-white sticky top-0 z-20 border-b border-neutral-200 px-6 py-4 shadow-sm">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <Disc3 className="w-6 h-6 text-indigo-600 animate-spin shrink-0" style={{ animationDuration: '6s' }} />
+            <h1 className="text-xl font-bold tracking-tight shrink-0">打捞 (Dredge)</h1>
+            <span className="text-sm text-neutral-500 ml-2 hidden sm:inline truncate">每日好歌共享池</span>
           </div>
-          {isAdmin ? (
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-xs px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold animate-pulse">
-                <Crown className="w-3.5 h-3.5" />
-                主理人模式已启用
-              </span>
+          
+          <div className="flex items-center gap-3 shrink-0">
+            {/* User Session Interface */}
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
+                  <User className="w-3 h-3" />
+                  {currentUser.name}
+                </span>
+                <button 
+                  onClick={handleLogout}
+                  className="text-xs text-neutral-400 hover:text-red-500 transition-colors"
+                  title="退出账户登录"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
               <button 
-                onClick={handleAdminLogout}
-                className="text-xs px-2 py-1 text-neutral-400 hover:text-neutral-600 transition"
+                onClick={() => {
+                  setAuthTab("login");
+                  setAuthError("");
+                  setShowAuthModal(true);
+                }}
+                className="text-xs px-2.5 py-1.5 bg-neutral-50 hover:bg-indigo-50 hover:text-indigo-600 border border-neutral-200/60 rounded-lg font-medium transition-all"
               >
-                退出
+                登录 / 注册
               </button>
+            )}
+
+            {/* Admin/Creator Interface */}
+            <div className="border-l border-neutral-200 pl-3 flex items-center">
+              {isAdmin ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1 text-xs px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold animate-pulse">
+                    <Crown className="w-3 h-3" />
+                    主理人
+                  </span>
+                  <button 
+                    onClick={handleAdminLogout}
+                    className="text-xs text-neutral-400 hover:text-neutral-600 transition"
+                  >
+                    退出
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleAdminLogin}
+                  className="text-xs text-neutral-300 hover:text-neutral-500 flex items-center gap-1 transition"
+                  title="主理人后台"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-          ) : (
-            <button 
-              onClick={handleAdminLogin}
-              className="text-xs text-neutral-300 hover:text-neutral-400 flex items-center gap-1 transition"
-              title="主理人后台"
-            >
-              <Lock className="w-3 h-3" />
-            </button>
-          )}
+          </div>
         </div>
       </header>
 
@@ -517,6 +671,11 @@ export default function Home() {
                                           主理人推荐
                                         </span>
                                       )}
+                                      {song.user?.name && (
+                                        <span className="inline-flex items-center text-xs text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded font-medium shrink-0">
+                                          投递人: {song.user.name}
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-sm text-neutral-500 truncate">{song.artist}</p>
                                   </div>
@@ -649,6 +808,126 @@ export default function Home() {
           )}
         </div>
       </footer>
+
+      {/* User Login/Register Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => {
+                setShowAuthModal(false);
+                setAuthError("");
+              }}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-600 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Tabs */}
+            <div className="flex border-b border-neutral-100 mb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab("login");
+                  setAuthError("");
+                }}
+                className={`flex-1 pb-3 text-center font-semibold text-sm transition-colors ${
+                  authTab === "login"
+                    ? "border-b-2 border-indigo-600 text-neutral-900"
+                    : "text-neutral-400 hover:text-neutral-600"
+                }`}
+              >
+                登录账号
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab("register");
+                  setAuthError("");
+                }}
+                className={`flex-1 pb-3 text-center font-semibold text-sm transition-colors ${
+                  authTab === "register"
+                    ? "border-b-2 border-indigo-600 text-neutral-900"
+                    : "text-neutral-400 hover:text-neutral-600"
+                }`}
+              >
+                注册新账号
+              </button>
+            </div>
+
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              {authTab === "register" && (
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
+                    起个好听的昵称
+                  </label>
+                  <div className="relative">
+                    <Smile className="w-4 h-4 text-neutral-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="例如: 听歌的小李"
+                      className="w-full pl-9 pr-4 py-2 text-sm border border-neutral-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                      value={authName}
+                      onChange={(e) => setAuthName(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
+                  电子邮箱
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-neutral-400 absolute left-3 top-3" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    className="w-full pl-9 pr-4 py-2 text-sm border border-neutral-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5">
+                  密码
+                </label>
+                <div className="relative">
+                  <Key className="w-4 h-4 text-neutral-400 absolute left-3 top-3" />
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    placeholder="输入至少 6 位密码..."
+                    className="w-full pl-9 pr-4 py-2 text-sm border border-neutral-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {authError && (
+                <p className="text-xs text-red-500 bg-red-50 p-2.5 rounded-lg border border-red-100">
+                  ⚠️ {authError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={authSubmitting}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm mt-6"
+              >
+                {authSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {authTab === "login" ? "登录" : "注册并登录"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

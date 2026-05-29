@@ -12,17 +12,56 @@ datasource db {
 }
 
 model Song {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   url       String
-  platform  String   // "netease" or "apple"
+  platform  String     // "netease" or "apple"
   title     String
   artist    String
   cover     String
-  genre     String   @default("其他") // 分类: 流行、摇滚、电子、说唱、民谣、纯音乐、其他
-  language  String   @default("其他") // 语种: 华语、欧美、日语、韩语、粤语、其他
+  genre     String     @default("其他") // 分类: 流行、摇滚、电子、说唱、民谣、纯音乐、其他
+  language  String     @default("其他") // 语种: 华语、欧美、日语、韩语、粤语、其他
   comment   String?
-  isPinned  Boolean  @default(false)  // 是否置顶
-  isCreator Boolean  @default(false)  // 是否为主理人推荐
+  isPinned  Boolean    @default(false)  // 是否置顶
+  isCreator Boolean    @default(false)  // 是否为主理人推荐
+  createdAt DateTime   @default(now())
+  
+  // Relations
+  userId    String?    // 投递用户，可为空（兼容老数据和匿名投递）
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  favorites Favorite[]
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String     // pbkdf2 散列加密存储
+  name      String     // 昵称
+  createdAt DateTime   @default(now())
+  
+  songs     Song[]
+  sessions  Session[]
+  favorites Favorite[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
   createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  songId    String
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, songId])
 }
 

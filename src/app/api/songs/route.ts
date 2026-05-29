@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth-utils";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,6 +25,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Unauthorized admin actions" }, { status: 403 });
     }
 
+    // Check if there is a logged-in user to associate with
+    const user = await getCurrentUser();
+
     const newSong = await prisma.song.create({
       data: {
         url,
@@ -36,6 +40,7 @@ export async function POST(request: Request) {
         platform,
         isCreator: hasAdminFlags ? !!isCreator : false,
         isPinned: hasAdminFlags ? !!isPinned : false,
+        userId: user ? user.id : null, // Store userId if logged in
       },
     });
 
@@ -59,6 +64,13 @@ export async function GET(request: Request) {
     // Sort: Pinned songs always stay at the top, then ordered by submission time
     const songs = await prisma.song.findMany({
       where,
+      include: {
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
       orderBy: [
         { isPinned: "desc" },
         { createdAt: "desc" }
