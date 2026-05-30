@@ -5,11 +5,10 @@ import { getCurrentUser } from "@/lib/auth-utils";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Helper to check admin authorization
-function isAdmin(request: Request) {
-  const authHeader = request.headers.get("Authorization");
-  const token = authHeader?.replace("Bearer ", "");
-  return token === process.env.ADMIN_PASSWORD;
+// Helper to check admin authorization via session user email
+async function isAdminUser(): Promise<boolean> {
+  const user = await getCurrentUser();
+  return user?.email === "kimioldlee@gmail.com";
 }
 
 export async function POST(request: Request) {
@@ -171,7 +170,7 @@ export async function GET(request: Request) {
 // DELETE to remove a song
 export async function DELETE(request: Request) {
   try {
-    if (!isAdmin(request)) {
+    if (!await isAdminUser()) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
@@ -196,7 +195,7 @@ export async function DELETE(request: Request) {
 // PATCH to toggle pinned status
 export async function PATCH(request: Request) {
   try {
-    if (!isAdmin(request)) {
+    if (!await isAdminUser()) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { format, isToday, isYesterday } from "date-fns";
-import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar, Trash2, Pin, Crown, ShieldCheck, Lock, Unlock, Heart, User, LogOut, X, Mail, Key, Smile } from "lucide-react";
+import { Music, Send, Loader2, PlayCircle, Apple, Disc3, Calendar, Trash2, Pin, Crown, Heart, User, LogOut, X, Mail, Key, Smile } from "lucide-react";
 
 const GENRES = ["全部", "流行", "摇滚", "电子", "说唱", "民谣", "爵士/布鲁斯", "古典", "ACG", "其他"];
 const LANGUAGES = ["全部", "华语", "欧美", "日语", "韩语", "粤语", "纯音乐", "其他"];
@@ -27,8 +27,6 @@ export default function Home() {
   const [platform, setPlatform] = useState("unknown");
 
   // Creator Mode State
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminPasscode, setAdminPasscode] = useState("");
   const [isFormCreator, setIsFormCreator] = useState(false);
   const [isFormPinned, setIsFormPinned] = useState(false);
 
@@ -58,27 +56,7 @@ export default function Home() {
   const { data: authData, mutate: mutateUser } = useSWR("/api/auth/me", fetcher);
   const currentUser = authData?.user;
   const isAuthenticated = authData?.authenticated;
-
-  // Handle auto login from query param or localStorage
-  useEffect(() => {
-    const storedPasscode = localStorage.getItem("admin_passcode");
-    if (storedPasscode) {
-      setIsAdmin(true);
-      setAdminPasscode(storedPasscode);
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const key = params.get("key");
-    if (key === "Kimi84282106") {
-      localStorage.setItem("admin_passcode", key);
-      setIsAdmin(true);
-      setAdminPasscode(key);
-      alert("🎉 欢迎回来，主理人！管理模式已启用。");
-      // Clean up the URL parameter to protect the passcode
-      const cleanUrl = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, document.title, cleanUrl);
-    }
-  }, []);
+  const isAdmin = currentUser?.email === "kimioldlee@gmail.com";
 
   // Load favorites from localStorage on start
   useEffect(() => {
@@ -262,27 +240,6 @@ export default function Home() {
     }
   };
 
-  const handleAdminLogin = () => {
-    const password = prompt("请输入主理人密码:");
-    if (password === "Kimi84282106") {
-      localStorage.setItem("admin_passcode", password);
-      setIsAdmin(true);
-      setAdminPasscode(password);
-      alert("🎉 欢迎回来，主理人！管理模式已启用。");
-    } else if (password) {
-      alert("❌ 密码错误");
-    }
-  };
-
-  const handleAdminLogout = () => {
-    localStorage.removeItem("admin_passcode");
-    setIsAdmin(false);
-    setAdminPasscode("");
-    setIsFormCreator(false);
-    setIsFormPinned(false);
-    alert("已退出主理人管理模式");
-  };
-
   const handleParse = async (inputUrl: string) => {
     if (!inputUrl) return;
     setParsing(true);
@@ -312,10 +269,6 @@ export default function Home() {
     setSubmitting(true);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (isAdmin && adminPasscode) {
-        headers["Authorization"] = `Bearer ${adminPasscode}`;
-      }
-
       const res = await fetch("/api/songs", {
         method: "POST",
         headers,
@@ -365,9 +318,6 @@ export default function Home() {
     try {
       const res = await fetch(`/api/songs?id=${id}`, {
         method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${adminPasscode}`
-        }
       });
       if (res.ok) {
         mutate();
@@ -385,7 +335,6 @@ export default function Home() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminPasscode}`
         },
         body: JSON.stringify({ id, isPinned: !currentPin })
       });
@@ -403,7 +352,6 @@ export default function Home() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminPasscode}`
         },
         body: JSON.stringify({ id, isCreator: !currentCreator })
       });
@@ -454,29 +402,13 @@ export default function Home() {
               </button>
             )}
 
-            {/* Admin/Creator Interface */}
+            {/* Admin Indicator */}
             <div className="border-l border-neutral-200 pl-3 flex items-center">
-              {isAdmin ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="flex items-center gap-1 text-xs px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold animate-pulse">
-                    <Crown className="w-3 h-3" />
-                    主理人
-                  </span>
-                  <button 
-                    onClick={handleAdminLogout}
-                    className="text-xs text-neutral-400 hover:text-neutral-600 transition"
-                  >
-                    退出
-                  </button>
-                </div>
-              ) : (
-                <button 
-                  onClick={handleAdminLogin}
-                  className="text-xs text-neutral-300 hover:text-neutral-500 flex items-center gap-1 transition"
-                  title="主理人后台"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                </button>
+              {isAdmin && (
+                <span className="flex items-center gap-1 text-xs px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold">
+                  <Crown className="w-3 h-3" />
+                  主理人
+                </span>
               )}
             </div>
           </div>
@@ -952,27 +884,10 @@ export default function Home() {
         </section>
       </div>
 
-      {/* Subtle Footer for Passcode login */}
+      {/* Footer */}
       <footer className="mt-20 border-t border-neutral-200/50 py-8 text-center text-xs text-neutral-400">
         <div className="max-w-3xl mx-auto flex flex-col items-center gap-2">
           <p>© 2026 打捞 (Dredge) · 倾听世界的温差</p>
-          {!isAdmin ? (
-            <button 
-              onClick={handleAdminLogin}
-              className="mt-1 flex items-center gap-1 text-neutral-300 hover:text-indigo-400 transition"
-            >
-              <Lock className="w-3 h-3" />
-              主理人通道
-            </button>
-          ) : (
-            <button 
-              onClick={handleAdminLogout}
-              className="mt-1 flex items-center gap-1 text-amber-500 hover:text-amber-600 transition font-semibold"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              主理人模式已启用 (点击退出)
-            </button>
-          )}
         </div>
       </footer>
 
