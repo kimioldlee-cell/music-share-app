@@ -289,7 +289,7 @@ export default function Home() {
       const result = await res.json();
       
       if (!res.ok || !result.success) {
-        alert(`❌ 发布失败: ${result.error || "未知错误"}\n提示: 请检查是否在 Vercel 关联了 ADMIN_PASSWORD 环境变量并进行了 Redeploy。`);
+        alert(`❌ 发布失败: ${result.error || "未知错误"}`);
         return;
       }
 
