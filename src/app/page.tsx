@@ -448,14 +448,17 @@ export default function Home() {
             {/* User Session Interface */}
             {currentUser ? (
               <div className="flex items-center gap-2">
-                <label className="cursor-pointer" title="点击设置头像" onClick={(e) => { e.preventDefault(); setShowAvatarSetup(true); }}>
+                <button
+                  onClick={() => setShowAvatarSetup(true)}
+                  className="cursor-pointer shrink-0"
+                  title="点击设置头像"
+                >
                   {currentUser.avatar ? (
                     <img src={currentUser.avatar} alt={currentUser.name} className="w-6 h-6 rounded-full object-cover border border-indigo-200" />
                   ) : (
                     <Disc3 className="w-6 h-6 text-indigo-600" />
                   )}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
-                </label>
+                </button>
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
                   {currentUser.name}
                 </span>
