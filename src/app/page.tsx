@@ -184,6 +184,28 @@ export default function Home() {
     }
   };
 
+  const handleReview = async (songId: string, field: "recommended" | "mainstream", value: boolean) => {
+    if (!isAuthenticated) {
+      setAuthTab("login");
+      setAuthError("");
+      setShowAuthModal(true);
+      return;
+    }
+
+    try {
+      const body: any = { songId };
+      body[field] = value;
+      await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      mutate();
+    } catch (e) {
+      console.error("Failed to submit review:", e);
+    }
+  };
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
@@ -799,6 +821,54 @@ export default function Home() {
                                   {!isAuthenticated && (
                                     <span className="text-[10px] text-neutral-400">登录后可评分</span>
                                   )}
+                                </div>
+
+                                {/* Review Widget: 推荐 + 大众/小众 */}
+                                <div className="mt-2 flex items-center gap-3">
+                                  {/* Recommend toggle */}
+                                  <button
+                                    onClick={() => handleReview(song.id, "recommended", true)}
+                                    className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium transition-all ${
+                                      song.userReview?.recommended
+                                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                                        : "bg-neutral-50 text-neutral-400 border border-neutral-200/60 hover:bg-emerald-50 hover:text-emerald-600"
+                                    }`}
+                                  >
+                                    👍 推荐
+                                    {song.recommendCount > 0 && (
+                                      <span className="text-[10px] opacity-70">{song.recommendCount}</span>
+                                    )}
+                                  </button>
+
+                                  {/* Mainstream / Niche toggle pair */}
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => handleReview(song.id, "mainstream", true)}
+                                      className={`text-xs px-2 py-1 rounded-full font-medium transition-all ${
+                                        song.userReview?.mainstream === true
+                                          ? "bg-sky-100 text-sky-700 border border-sky-200"
+                                          : "bg-neutral-50 text-neutral-400 border border-neutral-200/60 hover:bg-sky-50 hover:text-sky-600"
+                                      }`}
+                                    >
+                                      大众
+                                      {song.mainstreamCount > 0 && (
+                                        <span className="ml-0.5 text-[10px] opacity-70">{song.mainstreamCount}</span>
+                                      )}
+                                    </button>
+                                    <button
+                                      onClick={() => handleReview(song.id, "mainstream", false)}
+                                      className={`text-xs px-2 py-1 rounded-full font-medium transition-all ${
+                                        song.userReview?.mainstream === false
+                                          ? "bg-violet-100 text-violet-700 border border-violet-200"
+                                          : "bg-neutral-50 text-neutral-400 border border-neutral-200/60 hover:bg-violet-50 hover:text-violet-600"
+                                      }`}
+                                    >
+                                      小众
+                                      {song.nicheCount > 0 && (
+                                        <span className="ml-0.5 text-[10px] opacity-70">{song.nicheCount}</span>
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
                                 
                                 {/* Action Buttons */}

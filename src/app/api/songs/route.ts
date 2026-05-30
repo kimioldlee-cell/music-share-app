@@ -94,10 +94,68 @@ export async function GET(request: Request) {
       };
     }
 
+    // Batch-fetch review aggregations
+    const reviewAggs = await prisma.review.groupBy({
+      by: ["songId"],
+      where: { songId: { in: songIds } },
+      _count: { recommended: true },
+    });
+    const recommendCounts = await prisma.review.groupBy({
+      by: ["songId"],
+      where: { songId: { in: songIds }, recommended: true },
+      _count: { songId: true },
+    });
+    const mainstreamCounts = await prisma.review.groupBy({
+      by: ["songId"],
+      where: { songId: { in: songIds }, mainstream: true },
+      _count: { songId: true },
+    });
+    const nicheCounts = await prisma.review.groupBy({
+      by: ["songId"],
+      where: { songId: { in: songIds }, mainstream: false },
+      _count: { songId: true },
+    });
+
+    const reviewMap: Record<string, { recommendCount: number; mainstreamCount: number; nicheCount: number; totalReviewCount: number }> = {};
+    for (const agg of reviewAggs) {
+      reviewMap[agg.songId] = {
+        recommendCount: 0,
+        mainstreamCount: 0,
+        nicheCount: 0,
+        totalReviewCount: agg._count.recommended,
+      };
+    }
+    for (const r of recommendCounts) {
+      if (reviewMap[r.songId]) reviewMap[r.songId].recommendCount = r._count.songId;
+    }
+    for (const m of mainstreamCounts) {
+      if (reviewMap[m.songId]) reviewMap[m.songId].mainstreamCount = m._count.songId;
+    }
+    for (const n of nicheCounts) {
+      if (reviewMap[n.songId]) reviewMap[n.songId].nicheCount = n._count.songId;
+    }
+
+    // Fetch current user's reviews for highlight state
+    const user = await getCurrentUser();
+    let userReviewMap: Record<string, { recommended: boolean; mainstream: boolean }> = {};
+    if (user) {
+      const userReviews = await prisma.review.findMany({
+        where: { userId: user.id, songId: { in: songIds } },
+      });
+      for (const r of userReviews) {
+        userReviewMap[r.songId] = { recommended: r.recommended, mainstream: r.mainstream };
+      }
+    }
+
     const enriched = songs.map((song) => ({
       ...song,
       averageRating: ratingMap[song.id]?.averageRating ?? 0,
       ratingCount: ratingMap[song.id]?.ratingCount ?? 0,
+      recommendCount: reviewMap[song.id]?.recommendCount ?? 0,
+      mainstreamCount: reviewMap[song.id]?.mainstreamCount ?? 0,
+      nicheCount: reviewMap[song.id]?.nicheCount ?? 0,
+      totalReviewCount: reviewMap[song.id]?.totalReviewCount ?? 0,
+      userReview: userReviewMap[song.id] ?? null,
     }));
 
     return NextResponse.json(

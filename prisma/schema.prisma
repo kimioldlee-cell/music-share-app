@@ -30,6 +30,7 @@ model Song {
   user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   favorites Favorite[]
   ratings   Rating[]
+  reviews   Review[]
 }
 
 model User {
@@ -43,6 +44,7 @@ model User {
   sessions  Session[]
   favorites Favorite[]
   ratings   Rating[]
+  reviews   Review[]
 }
 
 model Session {
@@ -76,6 +78,20 @@ model Rating {
   
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, songId])
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  userId     String
+  songId     String
+  recommended Boolean  // true=值得推荐, false=不推荐
+  mainstream Boolean   // true=大众, false=小众
+  createdAt  DateTime @default(now())
+  
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song       Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
 
   @@unique([userId, songId])
 }
