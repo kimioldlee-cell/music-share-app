@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
     // Check if user is attempting to set creator/pinned flag and verify auth
     const hasAdminFlags = isCreator || isPinned;
-    const authorized = isAdmin(request);
+    const authorized = await isAdminUser();
 
     if (hasAdminFlags && !authorized) {
       return NextResponse.json({ success: false, error: "Unauthorized admin actions" }, { status: 403 });

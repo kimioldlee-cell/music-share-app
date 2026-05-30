@@ -57,16 +57,6 @@ export default function Home() {
   const [cropDragStart, setCropDragStart] = useState({ x: 0, y: 0 });
   const [avatarUploading, setAvatarUploading] = useState(false);
 
-  // Show avatar setup for new users without avatar
-  useEffect(() => {
-    if (isAuthenticated && currentUser && !currentUser.avatar) {
-      const skipped = localStorage.getItem("dredge_avatar_skipped");
-      if (!skipped) {
-        setShowAvatarSetup(true);
-      }
-    }
-  }, [isAuthenticated, currentUser]);
-
   const { data, mutate } = useSWR(`/api/songs?genre=${activeGenre}&language=${activeLanguage}`, fetcher, {
     revalidateOnFocus: true,
     revalidateOnMount: true
@@ -77,6 +67,16 @@ export default function Home() {
   const currentUser = authData?.user;
   const isAuthenticated = authData?.authenticated;
   const isAdmin = currentUser?.email === "kimioldlee@gmail.com";
+
+  // Show avatar setup for new users without avatar
+  useEffect(() => {
+    if (isAuthenticated && currentUser && !currentUser.avatar) {
+      const skipped = localStorage.getItem("dredge_avatar_skipped");
+      if (!skipped) {
+        setShowAvatarSetup(true);
+      }
+    }
+  }, [isAuthenticated, currentUser]);
 
   // Leaderboard fetches
   const { data: topRecommendData } = useSWR("/api/songs?sort=recommendRate&limit=20&today=true", fetcher);
