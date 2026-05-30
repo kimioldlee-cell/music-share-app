@@ -67,6 +67,7 @@ export async function GET(request: Request) {
         user: {
           select: {
             name: true,
+            avatar: true,
           },
         },
       },
@@ -146,16 +147,35 @@ export async function GET(request: Request) {
       }
     }
 
-    const enriched = songs.map((song) => ({
-      ...song,
-      averageRating: ratingMap[song.id]?.averageRating ?? 0,
-      ratingCount: ratingMap[song.id]?.ratingCount ?? 0,
-      recommendCount: reviewMap[song.id]?.recommendCount ?? 0,
-      mainstreamCount: reviewMap[song.id]?.mainstreamCount ?? 0,
-      nicheCount: reviewMap[song.id]?.nicheCount ?? 0,
-      totalReviewCount: reviewMap[song.id]?.totalReviewCount ?? 0,
-      userReview: userReviewMap[song.id] ?? null,
-    }));
+    // Wilson score helper (95% confidence lower bound)
+    const z = 1.96;
+    const wilsonLower = (s: number, n: number): number => {
+      if (n === 0) return 0;
+      const p = s / n;
+      const z2n = (z * z) / (2 * n);
+      const z4n = (z * z) / (4 * n);
+      const variance = (p * (1 - p) + z4n / n) / n;
+      const numerator = p + z2n - z * Math.sqrt(Math.max(0, variance));
+      const denominator = 1 + (z * z) / n;
+      return Math.round((numerator / denominator) * 100);
+    };
+
+    const enriched = songs.map((song) => {
+      const recommendCount = reviewMap[song.id]?.recommendCount ?? 0;
+      const totalReviewCount = reviewMap[song.id]?.totalReviewCount ?? 0;
+      const recommendRate = wilsonLower(recommendCount, totalReviewCount);
+      return {
+        ...song,
+        averageRating: ratingMap[song.id]?.averageRating ?? 0,
+        ratingCount: ratingMap[song.id]?.ratingCount ?? 0,
+        recommendCount,
+        mainstreamCount: reviewMap[song.id]?.mainstreamCount ?? 0,
+        nicheCount: reviewMap[song.id]?.nicheCount ?? 0,
+        totalReviewCount,
+        recommendRate,
+        userReview: userReviewMap[song.id] ?? null,
+      };
+    });
 
     return NextResponse.json(
       { success: true, data: enriched },

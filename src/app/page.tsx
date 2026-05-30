@@ -184,6 +184,42 @@ export default function Home() {
     }
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Resize to 150x150 thumbnail via canvas
+    const img = new window.Image();
+    img.onload = async () => {
+      const canvas = document.createElement("canvas");
+      const size = Math.min(img.width, img.height, 150);
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+      // Center crop
+      const sx = (img.width - size) / 2;
+      const sy = (img.height - size) / 2;
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+      const base64 = canvas.toDataURL("image/jpeg", 0.8);
+
+      try {
+        const res = await fetch("/api/auth/avatar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ avatar: base64 }),
+        });
+        if (res.ok) {
+          mutateUser();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    img.src = URL.createObjectURL(file);
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+  };
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
@@ -377,8 +413,17 @@ export default function Home() {
             {/* User Session Interface */}
             {currentUser ? (
               <div className="flex items-center gap-2">
+                <label className="cursor-pointer" title="点击更换头像">
+                  {currentUser.avatar ? (
+                    <img src={currentUser.avatar} alt={currentUser.name} className="w-6 h-6 rounded-full object-cover border border-indigo-200" />
+                  ) : (
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold border border-indigo-200">
+                      {currentUser.name?.charAt(0) || "?"}
+                    </span>
+                  )}
+                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                </label>
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
-                  <User className="w-3 h-3" />
                   {currentUser.name}
                 </span>
                 <button 
@@ -661,7 +706,14 @@ export default function Home() {
                                         </span>
                                       )}
                                       {song.user?.name && (
-                                        <span className="inline-flex items-center text-xs text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded font-medium shrink-0">
+                                        <span className="inline-flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded font-medium shrink-0">
+                                          {song.user.avatar ? (
+                                            <img src={song.user.avatar} alt={song.user.name} className="w-3.5 h-3.5 rounded-full object-cover" />
+                                          ) : (
+                                            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-indigo-200 text-indigo-700 text-[8px] font-bold">
+                                              {song.user.name.charAt(0)}
+                                            </span>
+                                          )}
                                           投递人: {song.user.name}
                                         </span>
                                       )}
@@ -771,6 +823,15 @@ export default function Home() {
                                       <span className="text-[10px] opacity-70">{song.recommendCount}</span>
                                     )}
                                   </button>
+                                  {song.totalReviewCount > 0 && (
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                      (song.recommendRate ?? 0) >= 80 ? "bg-emerald-100 text-emerald-700" :
+                                      (song.recommendRate ?? 0) >= 50 ? "bg-amber-100 text-amber-700" :
+                                      "bg-neutral-100 text-neutral-500"
+                                    }`}>
+                                      {(song.recommendRate ?? 0)}%
+                                    </span>
+                                  )}
 
                                   {/* Mainstream / Niche toggle pair */}
                                   <div className="flex items-center gap-1">

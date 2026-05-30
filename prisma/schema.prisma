@@ -38,6 +38,7 @@ model User {
   email     String     @unique
   password  String     // pbkdf2 散列加密存储
   name      String     // 昵称
+  avatar    String?    // 头像 base64 data URL (缩略图 150x150)
   createdAt DateTime   @default(now())
   
   songs     Song[]
