@@ -58,6 +58,12 @@ export default function Home() {
   const isAuthenticated = authData?.authenticated;
   const isAdmin = currentUser?.email === "kimioldlee@gmail.com";
 
+  // Leaderboard fetches
+  const { data: topRecommendData } = useSWR("/api/songs?sort=recommendRate&limit=20&today=true", fetcher);
+  const { data: topNicheData } = useSWR("/api/songs?sort=nicheCount&limit=20&today=true", fetcher);
+  const topRecommend = topRecommendData?.data || [];
+  const topNiche = topNicheData?.data || [];
+
   // Load favorites from localStorage on start
   useEffect(() => {
     const storedFavorites = localStorage.getItem("dredge_favorites");
@@ -460,7 +466,92 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-4 mt-8 space-y-12">
+      {/* Leaderboards */}
+      <div className="max-w-3xl mx-auto px-4 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Recommend Rate TOP 20 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
+            <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+              <h3 className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
+                🔥 推荐率 TOP 20
+              </h3>
+            </div>
+            <div className="divide-y divide-neutral-50 max-h-80 overflow-y-auto">
+              {topRecommend.length === 0 ? (
+                <p className="text-xs text-neutral-400 text-center py-6">今日还没有推荐数据</p>
+              ) : (
+                topRecommend.map((song: any, idx: number) => (
+                  <a
+                    key={song.id}
+                    href={song.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-amber-50/50 transition-colors group"
+                  >
+                    <span className={`text-xs font-bold w-5 shrink-0 ${
+                      idx < 3 ? "text-amber-500" : "text-neutral-400"
+                    }`}>
+                      {idx + 1}
+                    </span>
+                    <img
+                      src={song.cover || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=80&h=80"}
+                      alt={song.title}
+                      className="w-8 h-8 rounded-lg object-cover shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-neutral-800 truncate">{song.title}</p>
+                      <p className="text-xs text-neutral-400 truncate">{song.artist}</p>
+                    </div>
+                    <span className="text-xs font-bold text-amber-600 shrink-0">{song.recommendRate}%</span>
+                  </a>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Niche TOP 20 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
+            <div className="px-4 py-3 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-violet-100">
+              <h3 className="text-sm font-bold text-violet-800 flex items-center gap-1.5">
+                💎 小众发现 TOP 20
+              </h3>
+            </div>
+            <div className="divide-y divide-neutral-50 max-h-80 overflow-y-auto">
+              {topNiche.length === 0 ? (
+                <p className="text-xs text-neutral-400 text-center py-6">今日还没有小众标记</p>
+              ) : (
+                topNiche.map((song: any, idx: number) => (
+                  <a
+                    key={song.id}
+                    href={song.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-violet-50/50 transition-colors group"
+                  >
+                    <span className={`text-xs font-bold w-5 shrink-0 ${
+                      idx < 3 ? "text-violet-500" : "text-neutral-400"
+                    }`}>
+                      {idx + 1}
+                    </span>
+                    <img
+                      src={song.cover || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=80&h=80"}
+                      alt={song.title}
+                      className="w-8 h-8 rounded-lg object-cover shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-neutral-800 truncate">{song.title}</p>
+                      <p className="text-xs text-neutral-400 truncate">{song.artist}</p>
+                    </div>
+                    <span className="text-xs font-bold text-violet-600 shrink-0">{song.nicheCount}人</span>
+                  </a>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto px-4 mt-4 space-y-12">
         {/* Submit Section */}
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-100 relative overflow-hidden">
           {isAdmin && (
@@ -833,30 +924,17 @@ export default function Home() {
                                     </span>
                                   )}
 
-                                  {/* Mainstream / Niche toggle pair */}
+                                  {/* Niche toggle */}
                                   <div className="flex items-center gap-1">
                                     <button
-                                      onClick={() => handleReview(song.id, "mainstream", true)}
-                                      className={`text-xs px-2 py-1 rounded-full font-medium transition-all ${
-                                        song.userReview?.mainstream === true
-                                          ? "bg-sky-100 text-sky-700 border border-sky-200"
-                                          : "bg-neutral-50 text-neutral-400 border border-neutral-200/60 hover:bg-sky-50 hover:text-sky-600"
-                                      }`}
-                                    >
-                                      大众
-                                      {song.mainstreamCount > 0 && (
-                                        <span className="ml-0.5 text-[10px] opacity-70">{song.mainstreamCount}</span>
-                                      )}
-                                    </button>
-                                    <button
-                                      onClick={() => handleReview(song.id, "mainstream", false)}
+                                      onClick={() => handleReview(song.id, "mainstream", song.userReview?.mainstream === false ? true : false)}
                                       className={`text-xs px-2 py-1 rounded-full font-medium transition-all ${
                                         song.userReview?.mainstream === false
                                           ? "bg-violet-100 text-violet-700 border border-violet-200"
                                           : "bg-neutral-50 text-neutral-400 border border-neutral-200/60 hover:bg-violet-50 hover:text-violet-600"
                                       }`}
                                     >
-                                      小众
+                                      💎 小众
                                       {song.nicheCount > 0 && (
                                         <span className="ml-0.5 text-[10px] opacity-70">{song.nicheCount}</span>
                                       )}

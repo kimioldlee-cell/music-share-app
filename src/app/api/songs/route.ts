@@ -55,12 +55,23 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const genre = searchParams.get("genre");
     const language = searchParams.get("language");
+    const sort = searchParams.get("sort");
+    const today = searchParams.get("today");
+    const limit = parseInt(searchParams.get("limit") || "0");
 
     const where: any = {};
     if (genre && genre !== "全部") where.genre = genre;
     if (language && language !== "全部") where.language = language;
+    if (today === "true") {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(startOfDay);
+      endOfDay.setDate(endOfDay.getDate() + 1);
+      where.createdAt = { gte: startOfDay, lt: endOfDay };
+    }
 
-    // Sort: Pinned songs always stay at the top, then ordered by submission time
+    // For leaderboard: fetch up to 100 recent songs (we sort client-side after enrichment)
+    const take = limit > 0 ? Math.min(limit * 3, 100) : undefined;
     const songs = await prisma.song.findMany({
       where,
       include: {
@@ -71,10 +82,13 @@ export async function GET(request: Request) {
           },
         },
       },
-      orderBy: [
-        { isPinned: "desc" },
-        { createdAt: "desc" }
-      ],
+      orderBy: sort
+        ? [{ createdAt: "desc" }]
+        : [
+            { isPinned: "desc" },
+            { createdAt: "desc" }
+          ],
+      ...(take ? { take } : {}),
     });
 
     // Batch-fetch rating aggregations for all songs in one go
@@ -177,8 +191,19 @@ export async function GET(request: Request) {
       };
     });
 
+    // Apply leaderboard sorting if requested
+    let result = enriched;
+    if (sort === "recommendRate") {
+      result = enriched.sort((a, b) => b.recommendRate - a.recommendRate);
+    } else if (sort === "nicheCount") {
+      result = enriched.sort((a, b) => b.nicheCount - a.nicheCount);
+    }
+    if (limit > 0) {
+      result = result.slice(0, limit);
+    }
+
     return NextResponse.json(
-      { success: true, data: enriched },
+      { success: true, data: result },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   } catch (error) {
