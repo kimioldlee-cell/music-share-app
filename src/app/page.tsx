@@ -45,6 +45,10 @@ export default function Home() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
+  // Rating State
+  const [hoverStars, setHoverStars] = useState<Record<string, number>>({});
+  const [ratingSubmitting, setRatingSubmitting] = useState<Set<string>>(new Set());
+
   const { data, mutate } = useSWR(`/api/songs?genre=${activeGenre}&language=${activeLanguage}`, fetcher, {
     revalidateOnFocus: true,
     revalidateOnMount: true
@@ -146,6 +150,37 @@ export default function Home() {
       } catch (e) {
         console.error("Failed to sync favorite with server:", e);
       }
+    }
+  };
+
+  const handleRate = async (songId: string, value: number) => {
+    if (!isAuthenticated) {
+      setAuthTab("login");
+      setAuthError("");
+      setShowAuthModal(true);
+      return;
+    }
+
+    setRatingSubmitting((prev) => new Set(prev).add(songId));
+    try {
+      const res = await fetch("/api/ratings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ songId, value }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        // Refresh song list to get updated averages
+        mutate();
+      }
+    } catch (e) {
+      console.error("Failed to submit rating:", e);
+    } finally {
+      setRatingSubmitting((prev) => {
+        const next = new Set(prev);
+        next.delete(songId);
+        return next;
+      });
     }
   };
 
@@ -702,6 +737,68 @@ export default function Home() {
                                     <span className="px-2 py-0.5 bg-teal-50 text-teal-600 rounded-full">{song.language}</span>
                                   )}
                                   <span className="ml-1">{format(new Date(song.createdAt), "HH:mm")}</span>
+                                </div>
+
+                                {/* Star Rating */}
+                                <div className="mt-2.5 flex items-center gap-1.5">
+                                  <div className="flex items-center gap-px"
+                                    onMouseLeave={() => setHoverStars((prev) => {
+                                      const next = { ...prev };
+                                      delete next[song.id];
+                                      return next;
+                                    })}
+                                  >
+                                    {[0, 1, 2, 3, 4].map((i) => {
+                                      const hoverVal = hoverStars[song.id];
+                                      const displayVal = hoverVal ?? (song.averageRating || 0);
+                                      const leftHalf = i + 0.5;
+                                      const fullStar = i + 1;
+                                      const fillPct = displayVal >= fullStar ? 100 : displayVal >= leftHalf ? 50 : 0;
+                                      return (
+                                        <div
+                                          key={i}
+                                          className="relative w-5 h-5 cursor-pointer"
+                                          style={{ fontSize: '17px', lineHeight: '20px' }}
+                                          onMouseMove={(e) => {
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const x = e.clientX - rect.left;
+                                            const half = x < rect.width / 2;
+                                            setHoverStars((prev) => ({ ...prev, [song.id]: half ? leftHalf : fullStar }));
+                                          }}
+                                        >
+                                          <span className="absolute inset-0 text-neutral-300 select-none">★</span>
+                                          <span
+                                            className="absolute inset-0 overflow-hidden text-amber-500 select-none transition-all duration-75"
+                                            style={{ width: `${fillPct}%` }}
+                                          >
+                                            ★
+                                          </span>
+                                          {/* Click zones: left half */}
+                                          <span
+                                            className="absolute left-0 top-0 w-1/2 h-full z-10"
+                                            onClick={() => handleRate(song.id, leftHalf)}
+                                          />
+                                          {/* Click zones: right half */}
+                                          <span
+                                            className="absolute right-0 top-0 w-1/2 h-full z-10"
+                                            onClick={() => handleRate(song.id, fullStar)}
+                                          />
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {(song.ratingCount > 0 || ratingSubmitting.has(song.id)) && (
+                                    <span className="text-xs text-amber-600 font-medium">
+                                      {ratingSubmitting.has(song.id) ? (
+                                        <Loader2 className="w-3 h-3 animate-spin inline" />
+                                      ) : (
+                                        <>{song.averageRating} <span className="text-neutral-400 font-normal">({song.ratingCount})</span></>
+                                      )}
+                                    </span>
+                                  )}
+                                  {!isAuthenticated && (
+                                    <span className="text-[10px] text-neutral-400">登录后可评分</span>
+                                  )}
                                 </div>
                                 
                                 {/* Action Buttons */}

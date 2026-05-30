@@ -77,8 +77,31 @@ export async function GET(request: Request) {
       ],
     });
 
+    // Batch-fetch rating aggregations for all songs in one go
+    const songIds = songs.map((s) => s.id);
+    const ratingAggs = await prisma.rating.groupBy({
+      by: ["songId"],
+      where: { songId: { in: songIds } },
+      _avg: { value: true },
+      _count: { value: true },
+    });
+
+    const ratingMap: Record<string, { averageRating: number; ratingCount: number }> = {};
+    for (const agg of ratingAggs) {
+      ratingMap[agg.songId] = {
+        averageRating: agg._avg.value ? Math.round(agg._avg.value * 10) / 10 : 0,
+        ratingCount: agg._count.value,
+      };
+    }
+
+    const enriched = songs.map((song) => ({
+      ...song,
+      averageRating: ratingMap[song.id]?.averageRating ?? 0,
+      ratingCount: ratingMap[song.id]?.ratingCount ?? 0,
+    }));
+
     return NextResponse.json(
-      { success: true, data: songs },
+      { success: true, data: enriched },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   } catch (error) {
