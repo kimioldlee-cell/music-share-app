@@ -47,6 +47,26 @@ export default function Home() {
   const [hoverStars, setHoverStars] = useState<Record<string, number>>({});
   const [ratingSubmitting, setRatingSubmitting] = useState<Set<string>>(new Set());
 
+  // Avatar Setup State
+  const [showAvatarSetup, setShowAvatarSetup] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<string | null>(null);
+  const [cropX, setCropX] = useState(0);
+  const [cropY, setCropY] = useState(0);
+  const [cropZoom, setCropZoom] = useState(1.5);
+  const [cropDragging, setCropDragging] = useState(false);
+  const [cropDragStart, setCropDragStart] = useState({ x: 0, y: 0 });
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  // Show avatar setup for new users without avatar
+  useEffect(() => {
+    if (isAuthenticated && currentUser && !currentUser.avatar) {
+      const skipped = localStorage.getItem("dredge_avatar_skipped");
+      if (!skipped) {
+        setShowAvatarSetup(true);
+      }
+    }
+  }, [isAuthenticated, currentUser]);
+
   const { data, mutate } = useSWR(`/api/songs?genre=${activeGenre}&language=${activeLanguage}`, fetcher, {
     revalidateOnFocus: true,
     revalidateOnMount: true
@@ -190,24 +210,32 @@ export default function Home() {
     }
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const url = URL.createObjectURL(file);
+    setAvatarFile(url);
+    setCropX(0);
+    setCropY(0);
+    setCropZoom(1.5);
+    e.target.value = "";
+  };
 
-    // Resize to 150x150 thumbnail via canvas
+  const handleCropConfirm = async () => {
+    if (!avatarFile) return;
+    setAvatarUploading(true);
     const img = new window.Image();
     img.onload = async () => {
       const canvas = document.createElement("canvas");
-      const size = Math.min(img.width, img.height, 150);
+      const size = 150;
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d")!;
-      // Center crop
-      const sx = (img.width - size) / 2;
-      const sy = (img.height - size) / 2;
-      ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
-      const base64 = canvas.toDataURL("image/jpeg", 0.8);
-
+      const srcSize = Math.max(img.width, img.height) * cropZoom;
+      const sx = (img.width - srcSize / cropZoom) / 2 + cropX / cropZoom;
+      const sy = (img.height - srcSize / cropZoom) / 2 + cropY / cropZoom;
+      ctx.drawImage(img, sx, sy, srcSize / cropZoom, srcSize / cropZoom, 0, 0, size, size);
+      const base64 = canvas.toDataURL("image/jpeg", 0.85);
       try {
         const res = await fetch("/api/auth/avatar", {
           method: "POST",
@@ -216,14 +244,15 @@ export default function Home() {
         });
         if (res.ok) {
           mutateUser();
+          setShowAvatarSetup(false);
+          setAvatarFile(null);
         }
       } catch (err) {
         console.error(err);
       }
+      setAvatarUploading(false);
     };
-    img.src = URL.createObjectURL(file);
-    // Reset input so same file can be re-selected
-    e.target.value = "";
+    img.src = avatarFile;
   };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -419,13 +448,11 @@ export default function Home() {
             {/* User Session Interface */}
             {currentUser ? (
               <div className="flex items-center gap-2">
-                <label className="cursor-pointer" title="点击更换头像">
+                <label className="cursor-pointer" title="点击设置头像" onClick={(e) => { e.preventDefault(); setShowAvatarSetup(true); }}>
                   {currentUser.avatar ? (
                     <img src={currentUser.avatar} alt={currentUser.name} className="w-6 h-6 rounded-full object-cover border border-indigo-200" />
                   ) : (
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold border border-indigo-200">
-                      {currentUser.name?.charAt(0) || "?"}
-                    </span>
+                    <Disc3 className="w-6 h-6 text-indigo-600" />
                   )}
                   <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
                 </label>
@@ -801,9 +828,7 @@ export default function Home() {
                                           {song.user.avatar ? (
                                             <img src={song.user.avatar} alt={song.user.name} className="w-3.5 h-3.5 rounded-full object-cover" />
                                           ) : (
-                                            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-indigo-200 text-indigo-700 text-[8px] font-bold">
-                                              {song.user.name.charAt(0)}
-                                            </span>
+                                            <Disc3 className="w-3.5 h-3.5 text-indigo-600" />
                                           )}
                                           投递人: {song.user.name}
                                         </span>
@@ -1146,6 +1171,120 @@ export default function Home() {
                 {authTab === "login" ? "登录" : "注册并登录"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Avatar Setup Modal */}
+      {showAvatarSetup && (
+        <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl relative">
+            <button
+              onClick={() => {
+                localStorage.setItem("dredge_avatar_skipped", "1");
+                setShowAvatarSetup(false);
+                setAvatarFile(null);
+              }}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-600 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-lg font-bold text-neutral-800 mb-1">设置你的头像</h3>
+            <p className="text-sm text-neutral-400 mb-6">让大家在歌曲卡片上认出你</p>
+
+            {!avatarFile ? (
+              <div className="space-y-3">
+                {/* Default avatar option */}
+                <button
+                  onClick={() => {
+                    localStorage.setItem("dredge_avatar_skipped", "1");
+                    setShowAvatarSetup(false);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 rounded-xl border border-neutral-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all group"
+                >
+                  <div className="w-14 h-14 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Disc3 className="w-8 h-8 text-indigo-600" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold text-neutral-800 text-sm">使用默认头像</p>
+                    <p className="text-xs text-neutral-400">蓝色打捞碟片，和标签页一样</p>
+                  </div>
+                </button>
+
+                {/* Custom avatar option */}
+                <label className="w-full flex items-center gap-4 p-4 rounded-xl border border-neutral-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all cursor-pointer group">
+                  <div className="w-14 h-14 rounded-full bg-indigo-50 border-2 border-dashed border-indigo-200 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Smile className="w-7 h-7 text-indigo-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold text-neutral-800 text-sm">上传自定义头像</p>
+                    <p className="text-xs text-neutral-400">选择照片并裁剪区域</p>
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarFileChange} />
+                </label>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Crop area */}
+                <div className="relative mx-auto w-52 h-52 rounded-full overflow-hidden bg-neutral-900 select-none"
+                  onMouseDown={(e) => { setCropDragging(true); setCropDragStart({ x: e.clientX - cropX, y: e.clientY - cropY }); }}
+                  onMouseMove={(e) => { if (cropDragging) { setCropX(e.clientX - cropDragStart.x); setCropY(e.clientY - cropDragStart.y); } }}
+                  onMouseUp={() => setCropDragging(false)}
+                  onMouseLeave={() => setCropDragging(false)}
+                  onTouchStart={(e) => { const t = e.touches[0]; setCropDragging(true); setCropDragStart({ x: t.clientX - cropX, y: t.clientY - cropY }); }}
+                  onTouchMove={(e) => { if (cropDragging) { const t = e.touches[0]; setCropX(t.clientX - cropDragStart.x); setCropY(t.clientY - cropDragStart.y); } }}
+                  onTouchEnd={() => setCropDragging(false)}
+                >
+                  <img
+                    src={avatarFile}
+                    alt="裁剪预览"
+                    className="absolute max-w-none"
+                    style={{
+                      width: `${208 * cropZoom}px`,
+                      height: `${208 * cropZoom}px`,
+                      left: `calc(50% - ${104 * cropZoom}px + ${cropX}px)`,
+                      top: `calc(50% - ${104 * cropZoom}px + ${cropY}px)`,
+                    }}
+                    draggable={false}
+                  />
+                  {/* Circular overlay border */}
+                  <div className="absolute inset-0 rounded-full border-2 border-white/60 pointer-events-none shadow-[inset_0_0_0_9999px_rgba(0,0,0,0.15)]" />
+                </div>
+
+                {/* Zoom */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-neutral-400">缩放</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    value={cropZoom}
+                    onChange={(e) => setCropZoom(parseFloat(e.target.value))}
+                    className="flex-1 accent-indigo-600"
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setAvatarFile(null)}
+                    className="flex-1 py-2 text-sm font-medium text-neutral-500 hover:text-neutral-700 border border-neutral-200 rounded-lg"
+                  >
+                    重选照片
+                  </button>
+                  <button
+                    onClick={handleCropConfirm}
+                    disabled={avatarUploading}
+                    className="flex-1 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg flex items-center justify-center gap-1.5"
+                  >
+                    {avatarUploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    确认使用
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
